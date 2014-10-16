@@ -17,6 +17,7 @@
 package com.priyesh.hexatime;
 
 import java.util.Calendar;
+import java.util.Date;
 
 import android.app.KeyguardManager;
 import android.content.Context;
@@ -127,19 +128,12 @@ public class HexatimeService extends WallpaperService{
 
 						// Color Code Production
 						String hexTime = null, hexValue;
-						int red=0, green=0, blue=0;
+						double tempTime = (twelveHour * 3600) + (min * 60) + sec;
 						if(colorRangeValue == 1) {
-							Double tempTime = ((day * 86400) + (hour * 3600) + (min * 60) + sec) * 0.53200202942669;
-							hexValue = String.format("%6S", Integer.toHexString(tempTime.intValue())).replace(" ", "0");
-							red = Integer.parseInt(hexValue.substring(0, 2), 16);
-							green = Integer.parseInt(hexValue.substring(2, 4), 16);
-							blue = Integer.parseInt(hexValue.substring(4, 6), 16);
+							hexValue = String.format("%6S", Integer.toHexString((int)tempTime)).replace(" ", "0");
 						} 
 						else {
-							hexValue = String.format("%02X%02X%02X", hour, min, sec);
-							red = hour;
-							green = min;
-							blue = sec;
+							hexValue = String.format("%02X%02X%02X", twelveHour, min, sec);
 						}
 
 						// Time Format
@@ -168,7 +162,10 @@ public class HexatimeService extends WallpaperService{
 
 						// Colored Background Drawing
 						if (!enableSetCustomColorValue){
-							bg.setColor(Color.HSVToColor(255, new float[] {red / 255f, green / 255f, blue / 255f}));
+							float hue = (float)tempTime * 360f / (86400);
+							float sat = 0.9f;
+							float val = 0.85f;
+							bg.setColor(Color.HSVToColor(new float[] {hue, sat, val}));
 						}
 						else {
 							try {
