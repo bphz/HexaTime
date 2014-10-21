@@ -33,6 +33,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
 import android.service.wallpaper.WallpaperService;
+import android.util.Log;
 import android.view.Display;
 import android.view.SurfaceHolder;
 import android.view.WindowManager;
@@ -46,7 +47,7 @@ public class HexatimeService extends WallpaperService{
 	public Calendar cal;
 	private SharedPreferences mPrefs = null;
 
-	private int fontStyleValue = 1;
+	private int fontStyleValue = 1; 
 	private Typeface fontStyle;
 
 	private int clockSizeValue = 1;
@@ -90,6 +91,12 @@ public class HexatimeService extends WallpaperService{
 
 		private Canvas c;
 		private Paint hexClock, bg, dimLayer;
+		
+		private Bitmap initialOverlay;
+		private BitmapDrawable overlayDrawable;
+		private Bitmap finalOverlay;
+		private int canvasWidth = 500, canvasHeight = 500;
+		private int canvasDensity = 480;
 
 		private final Runnable mUpdateDisplay = new Runnable() {
 
@@ -102,6 +109,15 @@ public class HexatimeService extends WallpaperService{
 				mPrefs = HexatimeService.this.getSharedPreferences(SHARED_PREFS_NAME, 0);
 				mPrefs.registerOnSharedPreferenceChangeListener(this);
 				onSharedPreferenceChanged(mPrefs, null);
+			}
+			
+			public void onStart() {
+				Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
+				Point size = new Point();
+				display.getSize(size);
+				canvasWidth = size.x;
+				canvasHeight = size.y;
+				updateImageOverlay();
 			}
 
 			private void draw() {
@@ -116,86 +132,68 @@ public class HexatimeService extends WallpaperService{
 				SurfaceHolder holder = getSurfaceHolder();
 				c = null;
 				try {
+
+					// Color Code Production
+					String hexTime = null, hexValue;
+					double tempTime = (twelveHour * 3600) + (min * 60) + sec;
+					if(colorRangeValue == 1) {
+						hexValue = String.format("%6S", Integer.toHexString((int)tempTime)).replace(" ", "0");
+					}
+					else {
+						hexValue = String.format("%02X%02X%02X", twelveHour, min, sec);
+					}
+					
+					// Time Format
+					if (timeFormatValue == 0){
+						hexTime = String.format(clockStringFormat, twelveHour, min, sec); 
+					}						
+					else {
+						hexTime = String.format(clockStringFormat, hour, min, sec);
+					}
+					
+					// Toggle number sign visibility
+					if (showNumberSignValue){
+						hexTime = "#" + hexTime;					
+					}
+					
+					hexClock = new Paint();
+					bg = new Paint();
+
+					hexClock.setTextSize(clockSize);
+					hexClock.setTypeface(fontStyle);
+					hexClock.setColor(Color.WHITE);
+					hexClock.setAntiAlias(true);
+					
+					// Calculate clock offset
+					float d = hexClock.measureText(hexTime, 0, hexTime.length());
+					int horizontalClockOffset = (int) d / 2;
+					
 					c = holder.lockCanvas();
+					
 					if (c != null) {
-						hexClock = new Paint();
-						bg = new Paint();
-
-						hexClock.setTextSize(clockSize);
-						hexClock.setTypeface(fontStyle);
-						hexClock.setColor(Color.WHITE);
-						hexClock.setAntiAlias(true);
-
-						// Color Code Production
-						String hexTime = null, hexValue;
-						double tempTime = (twelveHour * 3600) + (min * 60) + sec;
-						if(colorRangeValue == 1) {
-							hexValue = String.format("%6S", Integer.toHexString((int)tempTime)).replace(" ", "0");
-						} 
-						else {
-							hexValue = String.format("%02X%02X%02X", twelveHour, min, sec);
-						}
-
-						// Time Format
-						if (colorCodeNotationValue == 0){
-							if (timeFormatValue == 0){
-								hexTime = String.format(clockStringFormat, twelveHour, min, sec); 
-							}						
-							else {
-								hexTime = String.format(clockStringFormat, hour, min, sec);
-							}
-						}
-						else if (colorCodeNotationValue == 1){
-							hexTime = hexValue;
-						}
-						
-						// Toggle number sign visibility
-						if (showNumberSignValue){
-							hexTime = "#" + hexTime;					
-						}
-						
-						// Calculate clock offset
-						float d = hexClock.measureText(hexTime, 0, hexTime.length());
-						int horizontalClockOffset = (int) d / 2;
-						int w = c.getWidth();
-						int h = c.getHeight();
+						canvasWidth = c.getWidth();
+						canvasHeight = c.getHeight();
+						canvasDensity = c.getDensity();
 
 						// Colored Background Drawing
-						if (!enableSetCustomColorValue){
-							float hue = (float)tempTime * 360f / (86400);
-							float sat = 0.9f;
-							float val = 0.85f;
-							bg.setColor(Color.HSVToColor(new float[] {hue, sat, val}));
-						}
-						else {
-							try {
-								bg.setColor(Color.parseColor("#" + customColor));
-							}
-							catch (IllegalArgumentException iae){
-								bg.setColor(Color.parseColor("#000000"));
-							}
-						}
-						c.drawRect(0, 0, w, h, bg);
 
-						// Dim Layer
-						dimLayer = new Paint();
-						dimLayer.setColor(Color.BLACK);
-						dimLayer.setAlpha(amountToDim);
-						c.drawRect(0, 0, w, h, dimLayer);
+						float hue = (float)(hour * 60 + min) * 360f / 1440f;
+						float sat = 0.9f;
+						float val = 0.9f;
+						
+						int defaultColor = Color.HSVToColor(new float[] {hue, sat, val - amountToDim * 0.5f / 255f});
+						
+						if (!enableSetCustomColorValue) {
+							c.drawColor(defaultColor); 
+						} else {
+							c.drawColor(Color.parseColor("#" + customColor));
+						}
 
 						// Image Overlay
 						if (enableImageOverlayValue) {
-							Bitmap initialOverlay = BitmapFactory.decodeResource(getResources(), imageOverlay);
-							Bitmap overlayScaled = Bitmap.createScaledBitmap(initialOverlay, imageOverlayScale, imageOverlayScale, false);
-
-							BitmapDrawable imageOverlay = new BitmapDrawable (overlayScaled); 
-							imageOverlay.setTileModeX(Shader.TileMode.REPEAT); 
-							imageOverlay.setTileModeY(Shader.TileMode.REPEAT);
-							imageOverlay.setAlpha(imageOverlayOpacity);
-							imageOverlay.setBounds(0, 0, w, h);
-
-							imageOverlay.draw(c);		
-							imageOverlay.getBitmap().recycle();
+							long t = System.nanoTime();
+							c.drawBitmap(finalOverlay, 0, 0, new Paint());
+							Log.i("HexaTime", "Took: " + (System.nanoTime() - t) + " nanos to render overlay");
 						}						
 
 						// Clock Visibility
@@ -397,30 +395,26 @@ public class HexatimeService extends WallpaperService{
 
 			private void changeSeparatorStyle(String value){
 				separatorStyleValue = Integer.parseInt(value);
+				String singleDigit = (colorCodeNotationValue == 1) ? "%02X" : "%02d";
 				if(separatorStyleValue == 0){ 
 					separatorStyle = ":";
-					clockStringFormat = "%02d" + separatorStyle + "%02d" + separatorStyle + "%02d";
 				}
 				else if (separatorStyleValue == 1){
 					separatorStyle = " ";
-					clockStringFormat = "%02d" + separatorStyle + "%02d" + separatorStyle + "%02d";
 				}
 				else if (separatorStyleValue == 2){
 					separatorStyle = ".";
-					clockStringFormat = "%02d" + separatorStyle + "%02d" + separatorStyle + "%02d";
 				}
 				else if (separatorStyleValue == 3){
 					separatorStyle = "|";
-					clockStringFormat = "%02d" + separatorStyle + "%02d" + separatorStyle + "%02d";
 				}
 				else if (separatorStyleValue == 4){
 					separatorStyle = "/";
-					clockStringFormat = "%02d" + separatorStyle + "%02d" + separatorStyle + "%02d";
 				}
 				else if (separatorStyleValue == 5){
 					separatorStyle = "";
-					clockStringFormat = "%02d" + separatorStyle + "%02d" + separatorStyle + "%02d";
 				}
+				clockStringFormat = singleDigit + separatorStyle + singleDigit + separatorStyle + singleDigit;
 			}
 
 			private void changeClockVisibility(String value){
@@ -457,10 +451,32 @@ public class HexatimeService extends WallpaperService{
 				else if (imageOverlayValue == 3){
 					imageOverlay = R.drawable.circles;
 				}
+				updateImageOverlay();
+			}
+			
+			private void updateImageOverlay() {
+				if (imageOverlayScale <= 0) imageOverlayScale = 1;
+				if (initialOverlay != null) initialOverlay.recycle();
+				initialOverlay = BitmapFactory.decodeResource(getResources(), imageOverlay);
+				Bitmap overlayScaled = Bitmap.createScaledBitmap(initialOverlay, imageOverlayScale, imageOverlayScale, false);
+				overlayDrawable = new BitmapDrawable (overlayScaled); 
+				overlayDrawable.setTileModeX(Shader.TileMode.REPEAT); 
+				overlayDrawable.setTileModeY(Shader.TileMode.REPEAT);
+				overlayDrawable.setAlpha(imageOverlayOpacity);
+				overlayDrawable.setBounds(0, 0, canvasWidth, canvasHeight);
+				overlayDrawable.setDither(false);
+				overlayDrawable.setTargetDensity(canvasDensity);
+				overlayDrawable.setAntiAlias(false);
+				if (finalOverlay != null) finalOverlay.recycle();
+				finalOverlay = Bitmap.createBitmap(canvasWidth, canvasHeight, initialOverlay.getConfig());
+				Canvas c = new Canvas(finalOverlay);
+				Paint p = new Paint();
+				overlayDrawable.draw(c);
 			}
 
 			private void changeImageOverlayOpacity(float value){
 				imageOverlayOpacity = (int) (value * 255);
+				updateImageOverlay();
 			}
 
 			private void changeImageOverlayScale(float value){
@@ -468,6 +484,7 @@ public class HexatimeService extends WallpaperService{
 				if (imageOverlayScale == 0) {
 					imageOverlayScale = 1;
 				}
+				updateImageOverlay();
 			}
 
 			private void enableSetCustomColor(boolean value){
@@ -481,10 +498,10 @@ public class HexatimeService extends WallpaperService{
 			private void reduceWallpaperUpdates(boolean value){
 				boolean wallpaperUpdateIntervalValue = value;
 				if (wallpaperUpdateIntervalValue){
-					wallpaperUpdateInterval = 1000;
+					wallpaperUpdateInterval = 10000;
 				}
 				else {
-					wallpaperUpdateInterval = 1;
+					wallpaperUpdateInterval = 1000;
 				}
 			}
 	}
