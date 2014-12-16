@@ -168,7 +168,8 @@ public class HexatimeService extends WallpaperService{
 
 						// Colored Background Drawing
 						if (!enableSetCustomColorValue){
-							bg.setColor(Color.argb(255, red, green, blue));
+                            bg.setColor(Color.HSVToColor(new float[]{((hour*3600)+(min*60)+sec)/240, .75f, 0.50f}));
+							//bg.setColor(Color.argb(255, red, green, blue));
 						}
 						else {
 							try {
